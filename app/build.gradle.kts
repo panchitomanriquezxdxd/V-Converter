@@ -6,8 +6,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// The APK is universal: one file with both 64-bit (arm64-v8a) and 32-bit (armeabi-v7a) ARM libraries, so it installs on
+// every Android phone. Pass -Pvconverter.abis=arm64-v8a,armeabi-v7a,x86_64 (comma separated) to change the set, e.g. to
+// add x86_64 for an emulator or to build a single ABI faster.
 val abis = (findProperty("vconverter.abis") as String?)?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
-    ?: listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+    ?: listOf("arm64-v8a", "armeabi-v7a")
 
 val keystoreProperties = Properties().apply {
     val file = rootProject.file("keystore/keystore.properties")
@@ -39,6 +42,13 @@ android {
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
             }
+        }
+    }
+
+    splits {
+        abi {
+            // Never split per ABI: the release must stay a single universal APK.
+            isEnable = false
         }
     }
 

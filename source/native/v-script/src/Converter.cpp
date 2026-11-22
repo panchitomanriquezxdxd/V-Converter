@@ -766,11 +766,30 @@ private:
 
     std::string tmp() { return "tmp" + std::to_string(++temp_); }
 
+    static constexpr int kVarargSlots = 8;
+
+    static std::string varargSlots() {
+        std::string out;
+        for (int i = 1; i <= kVarargSlots; i++) out += (i > 1 ? ", rest" : "rest") + std::to_string(i);
+        return out;
+    }
+
+    static std::string varargParams(bool leadingComma) {
+        std::string out;
+        for (int i = 1; i <= kVarargSlots; i++) out += (i > 1 || leadingComma ? ", ?rest" : "?rest") + std::to_string(i);
+        return out;
+    }
+
+    static void varargPrologue(Code& code) {
+        code.line("var varargs = [" + varargSlots() + "];");
+        code.line("while (varargs.length > 0 && varargs[varargs.length - 1] == null) varargs.pop();");
+    }
+
     void pushScope() { scopes_.emplace_back(); }
     void popScope() { scopes_.pop_back(); }
 
     std::string declare(const std::string& lua) {
-        std::string name = lua == "..." ? "args" : safeName(lua);
+        std::string name = lua == "..." ? "varargs" : safeName(lua);
         bool clash = fieldNames_.count(lua) && fieldNames_[lua] == name;
         for (const auto& t : tags_) if (t.second.field == name) clash = true;
         if (clash) name += "Local";
@@ -1101,12 +1120,18 @@ private:
         }
         if (e.fields.empty()) return "{}";
         if (positional && !named && !keyed) {
+            const Expr* last = e.fields.back().value.get();
+            bool spread = last && last->kind == ExprKind::Vararg && local("...") != nullptr;
+            size_t count = spread ? e.fields.size() - 1 : e.fields.size();
             std::string out = "[";
-            for (size_t i = 0; i < e.fields.size(); i++) {
+            for (size_t i = 0; i < count; i++) {
                 if (i) out += ", ";
                 out += expr(e.fields[i].value.get());
             }
-            return out + "]";
+            out += "]";
+            if (!spread) return out;
+            std::string rest = expr(last);
+            return count == 0 ? rest + ".copy()" : out + ".concat(" + rest + ")";
         }
         if (keyed) {
             issue(e.line, "a table with computed keys became a StringMap; read it with get() and set().");
@@ -1144,12 +1169,13 @@ private:
             params += "?" + declare(func.params[i]);
         }
         if (func.vararg) {
-            if (!params.empty()) params += ", ";
-            params += declare("...");
-            issue(func.line, "varargs (...) became one array argument.");
+            declare("...");
+            params += varargParams(!params.empty());
+            issue(func.line, "varargs (...) became up to 8 optional arguments, collected into the varargs array.");
         }
         Code code;
         code.setDepth(0);
+        if (func.vararg) varargPrologue(code);
         bool savedOverride = inOverride_;
         inOverride_ = false;
         block(func.body, code);
@@ -1189,7 +1215,8 @@ private:
                 }
                 const Expr* a = strip(e->a.get());
                 std::string inner = expr(a);
-                return a->kind == ExprKind::Binary ? "-(" + inner + ")" : "-" + inner;
+                bool wrap = a->kind == ExprKind::Binary || (!inner.empty() && inner[0] == '-');
+                return wrap ? "-(" + inner + ")" : "-" + inner;
             }
             case ExprKind::Binary: return binary(*e);
         }
@@ -1284,7 +1311,9 @@ private:
         std::string out;
         for (size_t i = from; i < list.size(); i++) {
             if (i > from) out += ", ";
-            out += expr(list[i].get());
+            const Expr* item = list[i].get();
+            if (item && item->kind == ExprKind::Vararg && i + 1 == list.size() && local("...") != nullptr) out += varargSlots();
+            else out += expr(item);
         }
         return out;
     }
@@ -1823,6 +1852,14 @@ private:
         }
         if (name == "error") return "throw " + arg(a, 0, "\"error\"");
         if (name == "assert") return arg(a, 0, "null");
+        if (name == "select" && a.size() == 2 && a[1] && a[1]->kind == ExprKind::Vararg && local("...") != nullptr) {
+            const Expr* index = strip(a[0].get());
+            if (isString(index) && stringOf(index) == "#") return "varargs.length";
+            if (index && index->kind == ExprKind::Number) {
+                int position = std::atoi(index->text.c_str());
+                return "varargs[" + std::to_string(position > 1 ? position - 1 : 0) + "]";
+            }
+        }
         if (name == "unpack" || name == "table.unpack" || name == "select" || name == "next" || name == "require" || name == "setmetatable" ||
             name == "getmetatable" || name == "rawget" || name == "rawset" || name == "loadstring" || name == "dofile") {
             issue(line, name + "() has no Haxe match.");
@@ -3116,12 +3153,13 @@ private:
                 if (i < hookParams.size() && hookMethods_.count(name)) params += ":" + hookParams[i].type;
             }
             if (func->vararg) {
-                if (!params.empty()) params += ", ";
-                params += declare("...");
-                issue(func->line, "varargs (...) became one array argument.");
+                declare("...");
+                params += varargParams(!params.empty());
+                issue(func->line, "varargs (...) became up to 8 optional arguments, collected into the varargs array.");
             }
             methods.blank();
             methods.open("function " + target + "(" + params + ")");
+            if (func->vararg) varargPrologue(methods);
             std::string savedEvent = eventParam_;
             std::string savedNote = noteTypeParam_;
             if (name == "onEvent" && !func->params.empty()) eventParam_ = safeName(func->params[0]);

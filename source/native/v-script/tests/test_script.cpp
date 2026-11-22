@@ -618,6 +618,77 @@ static void testHaxeToLua() {
     }
 }
 
+static void testScriptEncoding() {
+    const std::string bom = "\xEF\xBB\xBF";
+    const std::string hx = "function onCreate() {\r\n  trace(\"hi\");\r\n}\r\n";
+    vscript::HaxeLuaResult plain = hxToLua(hx, "psych", "script.hx");
+    vscript::HaxeLuaResult marked = hxToLua(bom + hx, "psych", "script.hx");
+    CHECK(plain.ok);
+    CHECK(marked.ok);
+    CHECK(marked.source == plain.source);
+    CHECK(has(marked.source, "debugPrint('hi')"));
+    vscript::ConvertResult lua = convert(bom + "function onCreate()\r\n  makeLuaSprite('bg', 'stageback', 0, 0)\r\nend\r\n", vscript::Base::Module);
+    CHECK(lua.ok);
+    CHECK(has(lua.source, "stageback"));
+}
+
+static void testVarargs() {
+    vscript::ConvertResult r = convert(
+        "local function helper(a, ...)\n"
+        "  local args = {...}\n"
+        "  local n = select('#', ...)\n"
+        "  local second = select(2, ...)\n"
+        "  return #args + a + n\n"
+        "end\n"
+        "local function wrap(...)\n"
+        "  return helper(1, ...)\n"
+        "end\n"
+        "local function both(x, ...)\n"
+        "  return {x, ...}\n"
+        "end\n"
+        "function onCreate()\n"
+        "  helper(3, 4, 5)\n"
+        "end\n",
+        vscript::Base::Module);
+    CHECK(r.ok);
+    CHECK(has(r.source, "function helper(?a, ?rest1, ?rest2, ?rest3, ?rest4, ?rest5, ?rest6, ?rest7, ?rest8)"));
+    CHECK(has(r.source, "var varargs = [rest1, rest2, rest3, rest4, rest5, rest6, rest7, rest8];"));
+    CHECK(has(r.source, "var args = varargs.copy();"));
+    CHECK(has(r.source, "var n = varargs.length;"));
+    CHECK(has(r.source, "var second = varargs[1];"));
+    CHECK(has(r.source, "return helper(1, rest1, rest2, rest3, rest4, rest5, rest6, rest7, rest8);"));
+    CHECK(has(r.source, "[x].concat(varargs)"));
+    CHECK(lacks(r.source, "var args = [args];"));
+    CHECK(braceBalance(r.source) == 0);
+}
+
+static void testDoubleNegation() {
+    vscript::ConvertResult lua = convert(
+        "function onCreate()\n"
+        "  local a = 5\n"
+        "  local h = -(-a)\n"
+        "  local k = 2 - (-a)\n"
+        "end\n",
+        vscript::Base::Module);
+    CHECK(lua.ok);
+    CHECK(has(lua.source, "var h = -(-a);"));
+    CHECK(lacks(lua.source, "--a"));
+    vscript::HaxeLuaResult hx = hxToLua(
+        "function onCreate() {\n"
+        "  var a = 5;\n"
+        "  var h = -(-a);\n"
+        "  var i = - -a;\n"
+        "  var j = a - -a;\n"
+        "  trace(h, i, j);\n"
+        "}\n",
+        "psych", "script.hx");
+    CHECK(hx.ok);
+    CHECK(has(hx.source, "local h = -(-a)"));
+    CHECK(has(hx.source, "local i = -(-a)"));
+    CHECK(has(hx.source, "local j = a - -a"));
+    CHECK(lacks(hx.source, "= --"));
+}
+
 int main() {
     testParser();
     testStage();
@@ -631,6 +702,9 @@ int main() {
     testChangeCharacter();
     testRuntimeSafety();
     testHaxeToLua();
+    testScriptEncoding();
+    testVarargs();
+    testDoubleNegation();
     if (failures == 0) std::printf("v-script: all tests passed\n");
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

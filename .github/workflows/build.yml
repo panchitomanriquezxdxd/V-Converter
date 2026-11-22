@@ -72,12 +72,20 @@ jobs:
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
-        run: ./gradlew :app:assembleRelease -Pvconverter.modules=app -Pvconverter.abis=arm64-v8a --build-cache
+        run: ./gradlew :app:assembleRelease -Pvconverter.modules=app -Pvconverter.abis=arm64-v8a,armeabi-v7a --build-cache
 
       - name: Name the APK
         run: |
           mkdir -p out
           cp app/build/outputs/apk/release/*.apk "out/V Converter-Android.apk"
+
+      - name: Check the APK is universal
+        run: |
+          abis=$(unzip -l "out/V Converter-Android.apk" | grep -o 'lib/[A-Za-z0-9_-]*/' | sort -u)
+          echo "Native libraries found for:"
+          echo "$abis"
+          echo "$abis" | grep -q 'lib/arm64-v8a/' || { echo "::error::The APK has no arm64-v8a libraries"; exit 1; }
+          echo "$abis" | grep -q 'lib/armeabi-v7a/' || { echo "::error::The APK has no armeabi-v7a libraries"; exit 1; }
 
       - name: Upload
         uses: actions/upload-artifact@v4

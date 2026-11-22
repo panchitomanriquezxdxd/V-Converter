@@ -92,4 +92,8 @@ if(NOT ANDROID)
     endif()
 else()
     target_link_libraries(vconverter_audio PRIVATE log)
+    # Android 15+ devices may use 16 KB memory pages, so every library is aligned to 16 KB (arm64-v8a, armeabi-v7a, x86_64).
+    foreach(target IN LISTS VCA_TARGETS)
+        target_link_options(${target} PRIVATE -Wl,-z,max-page-size=16384)
+    endforeach()
 endif()

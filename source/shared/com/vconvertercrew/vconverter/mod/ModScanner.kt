@@ -1,5 +1,7 @@
 package com.vconvertercrew.vconverter.mod
 
+import com.vconvertercrew.vconverter.script.ScriptExtensions
+
 data class ScannedSong(
     val id: String,
     val charts: Map<String, String>,
@@ -82,7 +84,7 @@ object ModScanner {
             when {
                 rel.equals("pack.json", ignoreCase = true) -> pack = full
                 rel.equals("pack.png", ignoreCase = true) -> packIcon = full
-                ext == "lua" || ext == "hx" || ext == "hxs" || ext == "hscript" || top in scriptFolders -> scripts += full
+                ext in ScriptExtensions.PSYCH_SOURCES || top in scriptFolders -> scripts += full
                 top == "data" && parts.size == 3 && ext == "json" -> {
                     val folder = parts[1]
                     val stem = fileName.substringBeforeLast('.')

@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import com.vconvertercrew.vconverter.io.ImportedFile
 import com.vconvertercrew.vconverter.io.OutputFile
 import com.vconvertercrew.vconverter.script.ScriptConverter
+import com.vconvertercrew.vconverter.script.ScriptExtensions
 import com.vconvertercrew.vconverter.script.ScriptScope
 import com.vconvertercrew.vconverter.script.ScriptSource
 import com.vconvertercrew.vconverter.script.ScriptTarget
@@ -113,6 +114,6 @@ class ScriptsViewModel(application: Application) : BaseConverterViewModel(applic
     }
 
     companion object {
-        val extensions = setOf("lua", "hx", "hxs", "hscript")
+        val extensions = ScriptExtensions.PSYCH_SOURCES
     }
 }

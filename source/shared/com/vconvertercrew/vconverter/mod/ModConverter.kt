@@ -19,6 +19,7 @@ import com.vconvertercrew.vconverter.core.AnimateAtlases
 import com.vconvertercrew.vconverter.core.SparrowAtlas
 import com.vconvertercrew.vconverter.core.json.asText
 import com.vconvertercrew.vconverter.script.ScriptConverter
+import com.vconvertercrew.vconverter.script.ScriptExtensions
 import com.vconvertercrew.vconverter.script.ScriptSource
 import com.vconvertercrew.vconverter.core.json.value
 import com.vconvertercrew.vconverter.stage.LuaStageExtractor
@@ -346,7 +347,7 @@ class ModConverter(
     }
 
     private fun convertScripts(info: ModInfo, charts: Map<String, Pair<List<ChartSource>, PsychSong>>) {
-        val scriptFiles = scan.scripts.filter { it.substringAfterLast('.').lowercase() in setOf("lua", "hx", "hxs", "hscript") }
+        val scriptFiles = scan.scripts.filter { ScriptExtensions.of(it) in ScriptExtensions.PSYCH_SOURCES }
         val noteTypeNames = linkedSetOf<String>()
         charts.values.forEach { (sources, _) ->
             sources.forEach { source -> source.song.sections.forEach { section -> section.notes.forEach { if (it.type.isNotBlank()) noteTypeNames += it.type } } }

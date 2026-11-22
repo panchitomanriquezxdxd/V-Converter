@@ -1314,8 +1314,10 @@ private:
         if (n->s == "++" || n->s == "--") return increment(n, false);
         if (n->s == "!") return lua("not " + L(n->a, P_UN), P_UN);
         if (n->s == "-") {
-            Val v = numVal("-" + L(n->a, P_UN), P_UN);
-            return v;
+            std::string inner = L(n->a, P_UN);
+            // "--" starts a comment in Lua, so a negated negative needs parentheses.
+            if (!inner.empty() && inner[0] == '-') inner = "(" + inner + ")";
+            return numVal("-" + inner, P_UN);
         }
         return numVal("bit.bnot(" + L(n->a) + ")");
     }

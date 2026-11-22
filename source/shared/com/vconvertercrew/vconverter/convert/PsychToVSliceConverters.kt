@@ -17,6 +17,7 @@ import com.vconvertercrew.vconverter.core.SparrowAtlas
 import com.vconvertercrew.vconverter.io.ImportedFile
 import com.vconvertercrew.vconverter.io.OutputFile
 import com.vconvertercrew.vconverter.script.ScriptConverter
+import com.vconvertercrew.vconverter.script.ScriptExtensions
 import com.vconvertercrew.vconverter.script.ScriptSource
 import com.vconvertercrew.vconverter.stage.LuaStageExtractor
 import com.vconvertercrew.vconverter.stage.PsychStageParser
@@ -239,7 +240,7 @@ class PsychScriptsConverter : PsychToVSliceConverter() {
 
     override fun downloadName() = "scripts-vslice.zip"
 
-    override fun accept(file: ImportedFile) = file.extension in setOf("lua", "hx", "hxs", "hscript")
+    override fun accept(file: ImportedFile) = file.extension in ScriptExtensions.PSYCH_SOURCES
 
     override fun classify(file: ImportedFile, text: String): PickedText {
         val target = ScriptConverter.detectTarget(file.path)

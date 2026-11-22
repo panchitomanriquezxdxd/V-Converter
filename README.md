@@ -41,7 +41,7 @@ Every push to `main` is also built by [GitHub Actions](https://github.com/VConve
 
 | Artifact | Platform | What it is |
 | --- | --- | --- |
-| `V Converter-Android` | 📱 Android | `V Converter-Android.apk`, the optimized (R8) signed APK |
+| `V Converter-Android` | 📱 Android | `V Converter-Android.apk`, the optimized (R8) signed universal APK: it has both the 64-bit (`arm64-v8a`) and 32-bit (`armeabi-v7a`) libraries, so it installs on any Android phone |
 | `V Converter-Windows` | 🪟 Windows | `V Converter-Windows.exe`, the installer |
 | `V Converter-Linux` | 🐧 Linux | `V Converter-Linux.deb` for Debian/Ubuntu and `V Converter-Linux.tar.gz`, a portable folder for any distro (run `V-Converter/bin/V-Converter`) |
 | `V Converter-MacOS` | 🍎 macOS | `V Converter-MacOS.dmg` (drag the app to Applications) and `V Converter-MacOS.zip` with the app itself. It isn't notarized: the first time, right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security** |
@@ -530,6 +530,14 @@ Android (debug and release APKs; needs the NDK and CMake from the Android SDK):
 ```
 ./gradlew assembleDebug assembleRelease
 ```
+
+The APK is universal: it bundles `arm64-v8a` and `armeabi-v7a`. To build other ABIs (for example `x86_64` for an emulator) or just one for a faster build, pass the list with `-Pvconverter.abis`:
+
+```
+./gradlew :app:assembleRelease -Pvconverter.abis=arm64-v8a,armeabi-v7a,x86_64
+```
+
+Both CI workflows check that the APK they produce contains `arm64-v8a` and `armeabi-v7a` libraries and fail otherwise.
 
 Release APKs are signed with the keystore in `keystore/` (`v-converter.jks`, settings in `keystore/keystore.properties`), so every release build has the same signature and installs as an update over the previous one. Builds made before the keystore was added were signed with a debug key: uninstall that version once before installing a new release APK. The keystore is public in this repository, so anyone can sign an APK with it; only install the APKs from this repository's Actions runs.
 

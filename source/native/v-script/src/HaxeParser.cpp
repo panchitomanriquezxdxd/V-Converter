@@ -44,7 +44,9 @@ void appendUtf8(std::string& out, unsigned long code) {
 
 class Lexer {
 public:
-    explicit Lexer(const std::string& src, size_t base = 0, int line = 1) : src_(src), base_(base), line_(line) {}
+    explicit Lexer(const std::string& src, size_t base = 0, int line = 1) : src_(src), base_(base), line_(line) {
+        if (base == 0 && src_.compare(0, 3, "\xEF\xBB\xBF") == 0) i_ = 3;
+    }
 
     std::vector<Tok> run() {
         std::vector<Tok> out;
