@@ -689,6 +689,78 @@ static void testDoubleNegation() {
     CHECK(lacks(hx.source, "= --"));
 }
 
+static void testHxcSpriteLoaders() {
+    vscript::HaxeLuaResult r = hxToLua(
+        "import funkin.play.stage.Stage;\n"
+        "import funkin.graphics.FunkinSprite;\n"
+        "import funkin.modding.events.ScriptEvent;\n"
+        "class MyStage extends Stage\n"
+        "{\n"
+        "  public function new() { super('myStage'); }\n"
+        "  override function onCreate(event:ScriptEvent):Void\n"
+        "  {\n"
+        "    super.onCreate(event);\n"
+        "    var bg:FunkinSprite = new FunkinSprite(-600, -300).loadTexture('stageback');\n"
+        "    bg.scrollFactor.set(0.9, 0.9);\n"
+        "    add(bg);\n"
+        "    var gf:FunkinSprite = new FunkinSprite(10, 20).loadSparrow('gfAnim');\n"
+        "    add(gf);\n"
+        "  }\n"
+        "}\n",
+        "vslice", "Stage.hxc");
+    CHECK(r.ok);
+    CHECK(r.fallbacks == 0);
+    CHECK(has(r.source, "loadGraphic(bg, 'stageback')"));
+    CHECK(has(r.source, "setScrollFactor(bg, 0.9, 0.9)"));
+    CHECK(has(r.source, "addLuaSprite(bg, false)"));
+    CHECK(has(r.source, "loadFrames(gf, 'gfAnim')"));
+    CHECK(lacks(r.source, "runHaxeCode"));
+    CHECK(lacks(r.source, "hx_set(bg"));
+}
+
+static void testHxcMultipleClasses() {
+    const std::string source =
+        "import funkin.modding.module.Module;\n"
+        "import funkin.play.PlayState;\n"
+        "import funkin.modding.events.ScriptEvent;\n"
+        "class Helper\n"
+        "{\n"
+        "  public static function clamp(v:Float, lo:Float, hi:Float):Float\n"
+        "  {\n"
+        "    return Math.max(lo, Math.min(hi, v));\n"
+        "  }\n"
+        "}\n"
+        "class Multi extends Module\n"
+        "{\n"
+        "  static final SPEED:Float = 2.5;\n"
+        "  var t:Float = 0;\n"
+        "  public function new() { super('multi', 500); }\n"
+        "  function pulse(amount:Float):Void\n"
+        "  {\n"
+        "    PlayState.instance.camGame.zoom = Helper.clamp(PlayState.instance.camGame.zoom + amount, 0.5, 2);\n"
+        "  }\n"
+        "  override function onUpdate(event:UpdateScriptEvent):Void\n"
+        "  {\n"
+        "    t += event.elapsed * SPEED;\n"
+        "    if (t > 1) { pulse(0.01); t = 0; }\n"
+        "  }\n"
+        "}\n";
+    vscript::HaxeLuaResult r = hxToLua(source, "vslice", "Multi.hxc");
+    CHECK(r.ok);
+    CHECK(r.kind == "module");
+    CHECK(has(r.source, "function onUpdate(elapsed)"));
+    CHECK(has(r.source, "Helper_clamp = function(v, lo, hi)"));
+    CHECK(has(r.source, "Helper_clamp(getProperty('camGame.zoom') + amount, 0.5, 2)"));
+    CHECK(lacks(r.source, "Helper.clamp"));
+    // the order of the classes does not matter
+    std::string swapped = source.substr(source.find("class Multi")) + source.substr(source.find("class Helper"), source.find("class Multi") - source.find("class Helper"));
+    vscript::HaxeLuaResult s2 = hxToLua(swapped, "vslice", "Multi.hxc");
+    CHECK(s2.ok);
+    CHECK(s2.kind == "module");
+    CHECK(has(s2.source, "function onUpdate(elapsed)"));
+    CHECK(has(s2.source, "Helper_clamp("));
+}
+
 int main() {
     testParser();
     testStage();
@@ -705,6 +777,8 @@ int main() {
     testScriptEncoding();
     testVarargs();
     testDoubleNegation();
+    testHxcSpriteLoaders();
+    testHxcMultipleClasses();
     if (failures == 0) std::printf("v-script: all tests passed\n");
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

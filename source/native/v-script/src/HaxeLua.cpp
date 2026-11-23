@@ -468,7 +468,7 @@ private:
         if (n->k == HxK::Call && n->a && n->a->k == HxK::Field) {
             const HxPtr& callee = n->a;
             if (callee->a && callee->a->k == HxK::Ident && callee->a->s == "FunkinSprite") return true;
-            static const std::set<std::string> fluent = {"loadGraphic", "makeGraphic", "screenCenter", "loadFrames", "makeSolidColor"};
+            static const std::set<std::string> fluent = {"loadGraphic", "loadTexture", "makeGraphic", "screenCenter", "loadFrames", "loadSparrow", "makeSolidColor"};
             if (fluent.count(callee->s)) return isCreation(callee->a);
         }
         return false;
@@ -2007,6 +2007,15 @@ private:
         if (direct) {
             if (name == "loadGraphic") {
                 emitPre("loadGraphic(" + tag + ", " + arg(a, 0, "''") + (a.size() > 2 ? ", " + L(a[2]) + ", " + arg(a, 3, "0") : "") + ")");
+                return v;
+            }
+            if (name == "loadTexture") {
+                // FunkinSprite.loadTexture(path) is a still image; loadSparrow(path) is an animated atlas.
+                emitPre("loadGraphic(" + tag + ", " + arg(a, 0, "''") + ")");
+                return v;
+            }
+            if (name == "loadSparrow") {
+                emitPre("loadFrames(" + tag + ", " + arg(a, 0, "''") + ")");
                 return v;
             }
             if (name == "makeGraphic" || name == "makeSolidColor") {

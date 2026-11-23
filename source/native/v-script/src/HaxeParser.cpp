@@ -2,6 +2,9 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <functional>
+#include <map>
+#include <set>
 
 namespace vscript {
 
@@ -326,6 +329,7 @@ public:
 
     HxScript script() {
         HxScript out;
+        std::vector<ClassInfo> classes;
         while (!at(TT::Eof)) {
             if (isWord("package")) {
                 skipTo(";");
@@ -347,15 +351,15 @@ public:
                 continue;
             }
             skipModifiers();
-            if (isWord("class") && !out.hasClass) {
+            if (isWord("class")) {
                 next();
-                out.hasClass = true;
-                out.className = expectIdent();
+                ClassInfo info;
+                info.name = expectIdent();
                 if (isOp("<")) typeText();
                 while (!isOp("{") && !at(TT::Eof)) {
                     if (isWord("extends")) {
                         next();
-                        out.parent = typeText();
+                        info.parent = typeText();
                         continue;
                     }
                     next();
@@ -363,9 +367,10 @@ public:
                 expectOp("{");
                 while (!isOp("}") && !at(TT::Eof)) {
                     HxMember m;
-                    if (member(m)) out.members.push_back(std::move(m));
+                    if (member(m)) info.members.push_back(std::move(m));
                 }
                 acceptOp("}");
+                classes.push_back(std::move(info));
                 continue;
             }
             if (isWord("class") || isWord("typedef") || isWord("enum") || isWord("abstract") || isWord("interface")) {
@@ -395,6 +400,7 @@ public:
             }
             out.topLevel.push_back(statement());
         }
+        mergeClasses(out, classes);
         return out;
     }
 
@@ -404,6 +410,92 @@ public:
     }
 
 private:
+    struct ClassInfo {
+        std::string name;
+        std::string parent;
+        std::vector<HxMember> members;
+    };
+
+    static void walkNodes(const HxPtr& n, const std::function<void(const HxPtr&)>& fn) {
+        if (!n) return;
+        fn(n);
+        walkNodes(n->a, fn);
+        walkNodes(n->b, fn);
+        walkNodes(n->c, fn);
+        for (const HxPtr& c : n->list) walkNodes(c, fn);
+        for (const HxStrPart& p : n->parts) walkNodes(p.expr, fn);
+        for (const HxCase& c : n->cases) {
+            for (const HxPtr& v : c.values) walkNodes(v, fn);
+            walkNodes(c.guard, fn);
+            for (const HxPtr& b : c.body) walkNodes(b, fn);
+        }
+        for (const HxCatch& c : n->catches) for (const HxPtr& b : c.body) walkNodes(b, fn);
+        for (const HxParam& p : n->params) walkNodes(p.value, fn);
+    }
+
+    static void walkMember(HxMember& m, const std::function<void(const HxPtr&)>& fn) {
+        walkNodes(m.value, fn);
+        for (const HxPtr& s : m.body) walkNodes(s, fn);
+        for (const HxParam& p : m.params) walkNodes(p.value, fn);
+    }
+
+    // A file can hold several classes: the one that extends a V-Slice base (Module, Stage, Song...) is the script, and the
+    // static functions and variables of the others (helpers) are merged in as "Helper_name" so calls like Helper.clamp(x)
+    // keep working. Before, only the first class was read, so a helper class placed first replaced the real one.
+    static void mergeClasses(HxScript& out, std::vector<ClassInfo>& classes) {
+        if (classes.empty()) return;
+        size_t primary = 0;
+        for (size_t i = 0; i < classes.size(); i++) {
+            if (!classes[i].parent.empty()) {
+                primary = i;
+                break;
+            }
+        }
+        out.hasClass = true;
+        out.className = classes[primary].name;
+        out.parent = classes[primary].parent;
+
+        std::set<std::string> helperNames;
+        std::map<std::string, std::set<std::string>> helperMembers;
+        for (size_t i = 0; i < classes.size(); i++) {
+            if (i == primary) continue;
+            helperNames.insert(classes[i].name);
+            for (const HxMember& m : classes[i].members) if (m.isStatic && m.name != "new") helperMembers[classes[i].name].insert(m.name);
+        }
+
+        std::vector<HxMember> merged;
+        for (size_t i = 0; i < classes.size(); i++) {
+            if (i == primary) continue;
+            const std::string& cls = classes[i].name;
+            const std::set<std::string>& names = helperMembers[cls];
+            for (HxMember& m : classes[i].members) {
+                if (!names.count(m.name)) continue;
+                std::set<std::string> local;
+                for (const HxParam& p : m.params) local.insert(p.name);
+                walkMember(m, [&](const HxPtr& n) {
+                    if (n->k == HxK::Var) for (const std::string& v : n->names) local.insert(v);
+                });
+                walkMember(m, [&](const HxPtr& n) {
+                    if (n->k == HxK::Ident && names.count(n->s) && !local.count(n->s)) n->s = cls + "_" + n->s;
+                });
+                m.name = cls + "_" + m.name;
+                merged.push_back(std::move(m));
+            }
+        }
+        for (HxMember& m : classes[primary].members) merged.push_back(std::move(m));
+
+        for (HxMember& m : merged) {
+            walkMember(m, [&](const HxPtr& n) {
+                if (n->k != HxK::Field || !n->a || n->a->k != HxK::Ident || !helperNames.count(n->a->s)) return;
+                if (!helperMembers[n->a->s].count(n->s)) return;
+                n->s = n->a->s + "_" + n->s;
+                n->k = HxK::Ident;
+                n->a = nullptr;
+            });
+        }
+        out.members = std::move(merged);
+    }
+
     std::vector<Tok> toks_;
     size_t p_ = 0;
 
